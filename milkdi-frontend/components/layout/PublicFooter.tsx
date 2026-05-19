@@ -1,52 +1,60 @@
-"use client"
-
 import Link from "next/link"
 import { Mail, Phone, MapPin } from "lucide-react"
 
 const footerLinks = {
-    Company: [
-        { label: "About Us", href: "/about" },
-        { label: "How It Works", href: "/how-it-works" },
-        { label: "Our Products", href: "/products" },
-        { label: "Contact Us", href: "/contact" },
+    Product: [
+        { label: "How It Works",  href: "/how-it-works" },
+        { label: "Our Products",  href: "/products" },
+        { label: "For Vendors",   href: "/vendors" },
+        { label: "Pricing",       href: "/vendors#pricing" },
     ],
-    Vendors: [
-        { label: "For Vendors", href: "/vendors" },
-        { label: "Register Shop", href: "/register" },
+    Company: [
+        { label: "About Us",   href: "/about" },
+        { label: "Contact",    href: "/contact" },
         { label: "Vendor Login", href: "/login" },
+        { label: "Register",   href: "/vendors" },
     ],
     Legal: [
-        { label: "Privacy Policy", href: "/privacy-policy" },
-        { label: "Terms of Service", href: "/terms-of-services" },
-        { label: "Refund Policy", href: "/terms-of-services#payments" },
+        { label: "Privacy Policy",  href: "/privacy-policy" },
+        { label: "Terms of Service",href: "/terms-of-services" },
+        { label: "Refund Policy",   href: "/terms-of-services#payments" },
     ],
 }
 
+const CONTACT = [
+    { icon: Mail,    text: "milkdiservices@gmail.com" },
+    { icon: Phone,   text: "+91 94557 91624" },
+    { icon: MapPin,  text: "Vibhav Khand, Lucknow, UP" },
+]
+
 export default function PublicFooter() {
     return (
-        <footer className="bg-text-title">
-            <div className="max-w-6xl mx-auto px-6 pt-14 pb-8">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10 mb-12">
-                    {/* Brand */}
-                    <div>
-                        <div className="flex items-center gap-3 mb-4">
-                            <img src="/milkdi-icon.svg" alt="Milkdi logo" className="w-9 h-9" />
-                            <div className="flex flex-col leading-none">
-                                <span className="font-bold text-white text-xl">MILKDI</span>
-                                <span className="text-[10px] font-semibold tracking-wide mt-0.5" style={{ color: "rgba(255,255,255,0.45)" }}>Pure Milk. Daily Fresh.</span>
+        <footer className="bg-white border-t border-border">
+            <div className="max-w-6xl mx-auto px-6 py-16">
+
+                {/* Top row */}
+                <div className="grid grid-cols-1 lg:grid-cols-5 gap-12 mb-12">
+
+                    {/* Brand — takes 2 cols */}
+                    <div className="lg:col-span-2">
+                        <Link href="/" className="flex items-center gap-2.5 mb-5">
+                            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                                    <path d="M12 2C9 2 5 4 5 9v10a2 2 0 002 2h10a2 2 0 002-2V9c0-5-4-7-7-7z" fill="white" opacity=".9"/>
+                                    <ellipse cx="12" cy="9" rx="4" ry="2" fill="white" opacity=".5"/>
+                                </svg>
                             </div>
-                        </div>
-                        <p className="text-sm leading-relaxed mb-5" style={{ color: "rgba(255,255,255,0.45)" }}>
-                            100% pure cow and buffalo milk delivered fresh daily from trusted local dairy farms.
+                            <span className="text-[17px] font-bold tracking-tight text-text-title">Milkdi</span>
+                        </Link>
+
+                        <p className="text-sm text-text-muted leading-relaxed mb-6 max-w-xs">
+                            Pure cow and buffalo milk delivered fresh every morning from verified local dairy farms across India.
                         </p>
-                        <div className="space-y-2">
-                            {[
-                                { icon: Mail, text: "milkdiservices@gmail.com" },
-                                { icon: Phone, text: "+91 94557 91624" },
-                                { icon: MapPin, text: "Vibhav Khand, Lucknow" },
-                            ].map(c => (
-                                <div key={c.text} className="flex items-center gap-2 text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>
-                                    <c.icon size={12} />
+
+                        <div className="space-y-2.5">
+                            {CONTACT.map(c => (
+                                <div key={c.text} className="flex items-center gap-2.5 text-sm text-text-muted">
+                                    <c.icon size={14} className="text-primary shrink-0" />
                                     {c.text}
                                 </div>
                             ))}
@@ -56,17 +64,16 @@ export default function PublicFooter() {
                     {/* Link groups */}
                     {Object.entries(footerLinks).map(([group, links]) => (
                         <div key={group}>
-                            <h4 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "rgba(255,255,255,0.3)" }}>
+                            <p className="text-xs font-semibold uppercase tracking-widest text-text-muted mb-4">
                                 {group}
-                            </h4>
-                            <ul className="space-y-2.5">
+                            </p>
+                            <ul className="space-y-3">
                                 {links.map(l => (
                                     <li key={l.href}>
-                                        <Link href={l.href}
-                                            className="text-sm transition-colors"
-                                            style={{ color: "rgba(255,255,255,0.5)" }}
-                                            onMouseEnter={e => e.currentTarget.style.color = "white"}
-                                            onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.5)"}>
+                                        <Link
+                                            href={l.href}
+                                            className="text-sm text-text-body hover:text-primary transition-colors"
+                                        >
                                             {l.label}
                                         </Link>
                                     </li>
@@ -76,20 +83,15 @@ export default function PublicFooter() {
                     ))}
                 </div>
 
-                <div className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-3"
-                    style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}>
-                    <span className="text-xs" style={{ color: "rgba(255,255,255,0.25)" }}>© 2026 DIFMO PRIVATE LIMITED. All rights reserved.</span>
-                    <div className="flex items-center gap-4 text-xs" style={{ color: "rgba(255,255,255,0.25)" }}>
-                        <Link href="/privacy-policy" style={{ color: "rgba(255,255,255,0.25)" }}
-                            onMouseEnter={e => e.currentTarget.style.color = "rgba(255,255,255,0.6)"}
-                            onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.25)"}>
-                            Privacy
-                        </Link>
-                        <Link href="/terms-of-services" style={{ color: "rgba(255,255,255,0.25)" }}
-                            onMouseEnter={e => e.currentTarget.style.color = "rgba(255,255,255,0.6)"}
-                            onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.25)"}>
-                            Terms
-                        </Link>
+                {/* Bottom bar */}
+                <div className="pt-8 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-3">
+                    <p className="text-xs text-text-muted">
+                        © {new Date().getFullYear()} DIFMO PRIVATE LIMITED. All rights reserved.
+                    </p>
+                    <div className="flex items-center gap-5">
+                        <Link href="/privacy-policy"    className="text-xs text-text-muted hover:text-primary transition-colors">Privacy</Link>
+                        <Link href="/terms-of-services" className="text-xs text-text-muted hover:text-primary transition-colors">Terms</Link>
+                        <Link href="/contact"           className="text-xs text-text-muted hover:text-primary transition-colors">Contact</Link>
                     </div>
                 </div>
             </div>
