@@ -1,4 +1,4 @@
-package com.difmo.difwa
+package com.difmo.milkdi
 
 import io.flutter.embedding.android.FlutterActivity
 
