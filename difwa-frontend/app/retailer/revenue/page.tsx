@@ -1,0 +1,550 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import { Wallet, ArrowUpRight, Clock, CheckCircle2, DollarSign, Download, Filter, Plus, X, Percent, Building2, ChevronRight, AlertCircle, Truck } from "lucide-react"
+import { cn } from "@/lib/utils"
+import { toast } from "sonner"
+import retailerService from "@/data/services/retailerService"
+import Link from "next/link"
+
+interface Payout {
+    _id: string;
+    amount: number;
+    status: 'Pending' | 'Approved' | 'Rejected';
+    createdAt: string;
+    transactionId?: string;
+}
+
+import useRetailerStore from "@/data/store/useRetailerStore"
+import useAuthStore from "@/data/store/useAuthStore"
+
+export default function RetailerRevenuePage() {
+    const { user } = useAuthStore()
+    const [mounted, setMounted] = useState(false)
+    const {
+        revenueData,
+        loadingStats,
+        payouts,
+        loadingPayouts,
+        payoutPagination,
+        bankAccounts,
+        loadingBanks,
+        fetchRevenueStats,
+        fetchPayoutHistory,
+        fetchBanks,
+        requestPayout: requestPayoutFromStore
+    } = useRetailerStore()
+
+    const [payoutPage, setPayoutPage] = useState(1)
+    const [showBreakdownModal, setShowBreakdownModal] = useState(false)
+    const [breakdownTitle, setBreakdownTitle] = useState("")
+    const [currentRange, setCurrentRange] = useState("month")
+    const [customRange, setCustomRange] = useState({
+        startDate: "",
+        endDate: ""
+    })
+
+    const [showPayoutModal, setShowPayoutModal] = useState(false)
+    const [payoutAmount, setPayoutAmount] = useState("")
+    const [selectedBankId, setSelectedBankId] = useState("")
+    const [submitting, setSubmitting] = useState(false)
+    const [deliveryIncome, setDeliveryIncome] = useState<number | null>(null)
+
+    useEffect(() => {
+        setMounted(true)
+        fetchPayoutHistory(payoutPage)
+        fetchBanks()
+        retailerService.getDeliveryIncome()
+            .then(res => { if (res.success) setDeliveryIncome(res.data.totalDeliveryIncome) })
+            .catch(() => {})
+    }, [fetchPayoutHistory, fetchBanks, payoutPage])
+
+    useEffect(() => {
+        if (currentRange !== 'custom' || (customRange.startDate && customRange.endDate)) {
+            fetchRevenueStats(currentRange,
+                currentRange === 'custom' ? customRange.startDate : undefined,
+                currentRange === 'custom' ? customRange.endDate : undefined,
+                true
+            )
+        }
+    }, [currentRange, customRange, fetchRevenueStats])
+
+    const revenueStats = revenueData || {
+        availableBalance: 0,
+        estimatedEarnings: 0,
+        totalSettled: 0,
+        totalEarnings: 0,
+        totalGrossEarnings: 0,
+        totalCommissionDeducted: 0,
+        commissionRate: 0,
+        earningsBreakdown: []
+    }
+
+    const handleRequestPayout = async (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!selectedBankId) {
+            toast.error("Please select a bank account")
+            return
+        }
+
+        const selectedBank = bankAccounts.find((b: any) => b._id === selectedBankId)
+        if (!selectedBank) return
+
+        setSubmitting(true)
+        try {
+            await requestPayoutFromStore({
+                amount: Number(payoutAmount),
+                bankDetails: {
+                    bankName: selectedBank.bankName,
+                    accountHolderName: selectedBank.accountHolderName,
+                    accountNumber: selectedBank.accountNumber,
+                    ifscCode: selectedBank.ifscCode
+                }
+            })
+            setShowPayoutModal(false)
+            setPayoutAmount("")
+            toast.success("Payout request submitted successfully")
+        } catch (error: any) {
+            toast.error(error.response?.data?.message || "Payout request failed")
+        } finally {
+            setSubmitting(false)
+        }
+    }
+
+    return (
+        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {/* Header */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h1 className="text-2xl font-bold tracking-tight">Revenue & Settlements</h1>
+                    <p className="text-text-muted mt-1">Track your earnings and manage your payouts.</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                    {currentRange === 'custom' && (
+                        <div className="flex items-center gap-2 animate-in slide-in-from-right-2 duration-300">
+                            <input
+                                type="date"
+                                value={customRange.startDate}
+                                onChange={(e) => setCustomRange({ ...customRange, startDate: e.target.value })}
+                                className="px-3 py-3 bg-white border border-border-custom rounded-2xl font-bold text-xs text-primary outline-none shadow-sm"
+                            />
+                            <span className="text-xs font-medium text-text-muted">To</span>
+                            <input
+                                type="date"
+                                value={customRange.endDate}
+                                onChange={(e) => setCustomRange({ ...customRange, endDate: e.target.value })}
+                                className="px-3 py-3 bg-white border border-border-custom rounded-2xl font-bold text-xs text-primary outline-none shadow-sm"
+                            />
+                        </div>
+                    )}
+                    <select
+                        value={currentRange}
+                        onChange={(e) => setCurrentRange(e.target.value)}
+                        className="px-4 py-3 bg-white border border-border-custom rounded-2xl font-bold text-xs text-primary outline-none focus:ring-2 focus:ring-primary/10 transition-all cursor-pointer shadow-sm"
+                    >
+                        <option value="today">EARNINGS: TODAY</option>
+                        <option value="yesterday">EARNINGS: YESTERDAY</option>
+                        <option value="tomorrow">EXPECTED: TOMORROW</option>
+                        <option value="week">THIS WEEK</option>
+                        <option value="month">THIS MONTH</option>
+                        <option value="custom">DATE RANGE: CUSTOM</option>
+                    </select>
+                    <Link
+                        href="/retailer/revenue/bankdetails"
+                        className="flex items-center gap-2 px-6 py-3 bg-white border border-border-custom text-primary rounded-xl font-semibold text-xs hover:border-primary/30 transition-all shadow-sm whitespace-nowrap"
+                    >
+                        <Building2 size={18} /> Bank Details
+                    </Link>
+                    <button
+                        onClick={() => {
+                            const defaultBank = bankAccounts.find((b: any) => b.isDefault);
+                            if (defaultBank) setSelectedBankId(defaultBank._id);
+                            else if (bankAccounts.length > 0) setSelectedBankId(bankAccounts[0]._id);
+                            setShowPayoutModal(true);
+                        }}
+                        className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-xl font-semibold text-xs hover:bg-primary/90 transition-all shadow-sm whitespace-nowrap"
+                    >
+                        <Plus size={18} /> Request Payout
+                    </button>
+                </div>
+            </div>
+
+            {/* Top Cards */}
+            <div className={cn("grid grid-cols-1 md:grid-cols-2 gap-6", user?.deliveryChargePermission ? "lg:grid-cols-4" : "lg:grid-cols-3")}>
+                <div
+                    onClick={() => {
+                        setBreakdownTitle("Available for Payout - Detailed Breakdown")
+                        setShowBreakdownModal(true)
+                    }}
+                    className="bg-primary rounded-xl p-8 text-white shadow-sm relative overflow-hidden group cursor-pointer hover:scale-[1.02] transition-all"
+                >
+                    <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform duration-500">
+                        <Wallet size={80} />
+                    </div>
+                    <p className="text-xs font-medium text-white/60 mb-1">Available for Payout</p>
+                    {loadingStats ? (
+                        <div className="h-10 bg-white/20 rounded animate-pulse w-32" />
+                    ) : (
+                        <h2 className="text-3xl md:text-2xl font-bold break-words">₹{(revenueStats.availableBalance || 0).toLocaleString()}</h2>
+                    )}
+                    <div className="mt-6 flex items-center gap-2 text-xs font-bold text-blue-300">
+                        <ArrowUpRight size={14} /> Based on completed orders
+                    </div>
+                </div>
+
+                <div
+                    onClick={() => {
+                        setBreakdownTitle("Monthly Estimated Earnings - Detailed Breakdown")
+                        setShowBreakdownModal(true)
+                    }}
+                    className="bg-white rounded-xl p-8 border border-border-custom shadow-sm flex flex-col justify-center cursor-pointer hover:border-primary/30 transition-all"
+                >
+                    <p className="text-xs font-medium text-text-muted mb-2">Estimated Earnings</p>
+                    {loadingStats ? (
+                        <div className="h-9 bg-background-soft rounded animate-pulse w-32" />
+                    ) : (
+                        <h2 className="text-2xl md:text-2xl font-bold text-primary break-words">₹{(revenueStats.estimatedEarnings || 0).toLocaleString()}</h2>
+                    )}
+                    <p className="mt-2 text-xs font-bold text-text-muted uppercase">
+                        {currentRange === 'today' ? 'Today\'s Earnings' :
+                            currentRange === 'tomorrow' ? 'Expected Tomorrow' :
+                                currentRange === 'yesterday' ? 'Yesterday\'s Total' :
+                                    currentRange === 'week' ? 'Last 7 Days' :
+                                        currentRange === 'custom' ? `From ${customRange.startDate} to ${customRange.endDate}` : 'This Month'}
+                    </p>
+                </div>
+
+                <div className="bg-white rounded-xl p-8 border border-border-custom shadow-sm flex flex-col justify-center">
+                    <p className="text-xs font-medium text-text-muted mb-2">Total Settlements</p>
+                    {loadingStats ? (
+                        <div className="h-9 bg-background-soft rounded animate-pulse w-32" />
+                    ) : (
+                        <h2 className="text-2xl md:text-2xl font-bold text-blue-600 break-words">₹{(revenueStats.totalSettled || 0).toLocaleString()}</h2>
+                    )}
+                    <p className="mt-2 text-xs font-bold text-text-muted uppercase">Net Lifetime: ₹{(revenueStats.totalEarnings || 0).toLocaleString()}</p>
+                </div>
+
+                {user?.deliveryChargePermission && deliveryIncome !== null && (
+                    <div className="bg-orange-50 rounded-xl p-8 border border-orange-200 shadow-sm flex flex-col justify-center">
+                        <div className="flex items-center gap-2 mb-2">
+                            <Truck size={16} className="text-orange-500" />
+                            <p className="text-xs font-medium text-orange-600">Delivery Income</p>
+                        </div>
+                        {loadingStats ? (
+                            <div className="h-9 bg-orange-200/50 rounded animate-pulse w-32" />
+                        ) : (
+                            <h2 className="text-2xl md:text-2xl font-bold text-orange-600 break-words">₹{deliveryIncome.toLocaleString()}</h2>
+                        )}
+                        <p className="mt-2 text-[10px] font-bold text-orange-500/80 uppercase">From Custom Slabs</p>
+                    </div>
+                )}
+            </div>
+
+            {/* Commission & Details Card */}
+            <div
+                onClick={() => {
+                    setBreakdownTitle("Lifetime Commission Breakdown")
+                    setShowBreakdownModal(true)
+                }}
+                className="bg-white rounded-xl p-8 border-l-4 border-l-amber-400 border border-border-custom shadow-sm flex flex-col md:flex-row items-center justify-between gap-6 overflow-hidden relative cursor-pointer hover:bg-amber-50/20 transition-all"
+            >
+                <div className="flex items-center gap-6 relative z-10 w-full md:w-auto">
+                    <div className="w-16 h-16 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600 shrink-0">
+                        <Percent size={32} />
+                    </div>
+                    <div>
+                        <h4 className="text-xl font-semibold text-foreground leading-tight">Platform Commission</h4>
+                        <p className="text-xs font-bold text-text-muted uppercase tracking-widest mt-1">Current Active Rate: <span className="text-amber-600">{revenueStats.commissionRate}%</span></p>
+                    </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-6 w-full md:w-auto md:items-center">
+                    <div className="space-y-1 flex-1 min-w-0">
+                        <p className="text-xs font-medium text-text-muted">Gross Revenue</p>
+                        <p className="text-xl font-bold text-primary break-words">₹{(revenueStats.totalGrossEarnings || 0).toLocaleString()}</p>
+                    </div>
+                    <div className="h-8 w-[1px] bg-border-custom hidden sm:block" />
+                    <div className="space-y-1 flex-1 min-w-0">
+                        <p className="text-xs font-medium text-text-muted text-amber-600">Total Commission Paid</p>
+                        <p className="text-xl font-bold text-amber-600 break-words">- ₹{(revenueStats.totalCommissionDeducted || 0).toLocaleString()}</p>
+                    </div>
+                    <div className="h-8 w-[1px] bg-border-custom hidden sm:block" />
+                    <div className="space-y-1">
+                        <p className="text-xs font-medium text-text-muted text-blue-600">Net Earnings (After Commission)</p>
+                        <p className="text-xl font-bold text-blue-600">₹{(revenueStats.totalEarnings || 0).toLocaleString()}</p>
+                    </div>
+                </div>
+            </div>
+
+            {/* Settlements History */}
+            <div className="bg-white rounded-xl border border-border-custom shadow-sm overflow-hidden">
+                <div className="p-8 border-b border-border-custom flex items-center justify-between">
+                    <h3 className="text-lg font-semibold">Recent Settlements</h3>
+                </div>
+
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                        <thead>
+                            <tr className="bg-background-soft/50">
+                                <th className="px-8 py-5 text-xs font-medium text-text-muted">Payout ID</th>
+                                <th className="px-8 py-5 text-xs font-medium text-text-muted">Amount</th>
+                                <th className="px-8 py-5 text-xs font-medium text-text-muted">Date</th>
+                                <th className="px-8 py-5 text-xs font-medium text-text-muted">Status</th>
+                                <th className="px-8 py-5 text-xs font-medium text-text-muted">UTR / Proof</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border-custom/50">
+                            {loadingPayouts ? (
+                                [1, 2, 3].map(i => (
+                                    <tr key={i} className="animate-pulse">
+                                        <td colSpan={5} className="px-8 py-6 h-16 bg-gray-50/30" />
+                                    </tr>
+                                ))
+                            ) : payouts.length === 0 ? (
+                                <tr>
+                                    <td colSpan={5} className="px-8 py-20 text-center">
+                                        <p className="text-text-muted font-bold">No payout history found.</p>
+                                    </td>
+                                </tr>
+                            ) : (
+                                payouts.map((payout: Payout) => (
+                                    <tr key={payout._id} className="hover:bg-background-soft/20 transition-colors">
+                                        <td className="px-8 py-6 text-sm font-bold text-primary truncate max-w-[150px]">
+                                            #{payout._id.slice(-8).toUpperCase()}
+                                        </td>
+                                        <td className="px-8 py-6">
+                                            <p className="font-bold text-primary">₹{payout.amount.toLocaleString()}</p>
+                                        </td>
+                                        <td className="px-8 py-6 text-sm font-medium text-text-muted">
+                                            {new Date(payout.createdAt).toLocaleDateString()}
+                                        </td>
+                                        <td className="px-8 py-6">
+                                            <span className={cn(
+                                                "px-3 py-1 rounded-full text-xs font-medium border",
+                                                payout.status === 'Approved' ? "bg-blue-50 text-blue-600 border-blue-100" :
+                                                    payout.status === 'Pending' ? "bg-amber-50 text-amber-600 border-amber-100" :
+                                                        "bg-red-50 text-red-600 border-red-100"
+                                            )}>
+                                                {payout.status}
+                                            </span>
+                                        </td>
+                                        <td className="px-8 py-6">
+                                            <p className="text-xs font-mono font-bold text-primary">{payout.transactionId || '---'}</p>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+
+                {/* Pagination UI */}
+                {payoutPagination && payoutPagination.pages > 1 && (
+                    <div className="p-8 border-t border-border-custom flex items-center justify-between bg-white">
+                        <p className="text-xs text-text-muted font-medium">
+                            Showing <span className="text-primary">{payouts.length}</span> of <span className="text-primary">{payoutPagination.total}</span> requests
+                        </p>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => setPayoutPage(prev => Math.max(1, prev - 1))}
+                                disabled={payoutPage <= 1}
+                                className="p-3 rounded-2xl border border-border-custom hover:bg-background-soft disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                            >
+                                <ChevronRight className="w-5 h-5 rotate-180" />
+                            </button>
+
+                            {[...Array(payoutPagination.pages)].map((_, i) => (
+                                <button
+                                    key={i}
+                                    onClick={() => setPayoutPage(i + 1)}
+                                    className={cn(
+                                        "w-9 h-9 rounded-xl text-xs font-semibold transition-all border",
+                                        payoutPage === i + 1
+                                            ? "bg-primary text-white border-primary shadow-lg shadow-primary/30"
+                                            : "hover:bg-background-soft text-text-muted border-border-custom"
+                                    )}
+                                >
+                                    {i + 1}
+                                </button>
+                            ))}
+
+                            <button
+                                onClick={() => setPayoutPage(prev => Math.min(payoutPagination.pages, prev + 1))}
+                                disabled={payoutPage >= payoutPagination.pages}
+                                className="p-3 rounded-2xl border border-border-custom hover:bg-background-soft disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                            >
+                                <ChevronRight className="w-5 h-5" />
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Payout Request Modal */}
+            {showPayoutModal && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-4">
+                    <form
+                        onSubmit={handleRequestPayout}
+                        className="bg-white rounded-xl w-full max-w-xl overflow-hidden shadow-md animate-in zoom-in-95 duration-300"
+                    >
+                        <div className="p-8 border-b border-gray-100 flex items-center justify-between">
+                            <h2 className="text-2xl font-semibold">Request Payout</h2>
+                            <button type="button" onClick={() => setShowPayoutModal(false)} className="w-10 h-10 flex items-center justify-center hover:bg-gray-100 rounded-full transition-colors">
+                                <X size={24} className="text-text-muted" />
+                            </button>
+                        </div>
+
+                        <div className="p-8 space-y-6">
+                            <div className="space-y-2">
+                                <label className="text-xs font-medium text-text-muted ml-1">Payout Amount (₹)</label>
+                                <input
+                                    type="number"
+                                    required
+                                    min="500"
+                                    max={Math.max(500, revenueStats.availableBalance)}
+                                    disabled={revenueStats.availableBalance < 500}
+                                    placeholder={revenueStats.availableBalance < 500 ? "Insufficient balance" : "Enter amount to withdraw..."}
+                                    value={payoutAmount}
+                                    onChange={e => setPayoutAmount(e.target.value)}
+                                    className="w-full px-6 py-4 rounded-xl bg-background-soft border border-transparent focus:border-primary/30 outline-none transition-all font-bold text-xl text-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                                />
+                                <div className="flex flex-col gap-1 mt-1">
+                                    <p className="text-[10px] text-text-muted font-bold uppercase tracking-widest">Available: ₹{revenueStats.availableBalance.toLocaleString()}</p>
+                                    {revenueStats.availableBalance < 500 && (
+                                        <p className="text-[10px] text-red-500 font-bold uppercase tracking-widest flex items-center gap-1">
+                                            <AlertCircle size={10} /> Your balance is less than 500
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <h3 className="text-xs font-semibold text-foreground tracking-widest opacity-50 ml-1">Select Settlement Account</h3>
+
+                                {bankAccounts.length === 0 ? (
+                                    <div className="bg-amber-50 md:p-6 p-4 rounded-xl border border-amber-100 flex flex-col items-center text-center gap-3">
+                                        <AlertCircle className="text-amber-600" size={32} />
+                                        <div className="space-y-1">
+                                            <p className="text-sm font-semibold text-amber-900">No Bank Account Found</p>
+                                            <p className="text-xs text-amber-800/70 font-medium">You must link a bank account before you can request a payout.</p>
+                                        </div>
+                                        <Link href="/retailer/revenue/bankdetails" className="mt-2 px-6 py-2 bg-amber-600 text-white rounded-xl text-xs font-medium">
+                                            Link Account Now
+                                        </Link>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {bankAccounts.map((bank: any) => (
+                                            <div
+                                                key={bank._id}
+                                                onClick={() => setSelectedBankId(bank._id)}
+                                                className={cn(
+                                                    "p-4 rounded-xl border-2 cursor-pointer transition-all flex items-center justify-between group",
+                                                    selectedBankId === bank._id ? "border-primary bg-primary/5" : "border-gray-100 hover:border-primary/20"
+                                                )}
+                                            >
+                                                <div className="flex items-center gap-4">
+                                                    <div className={cn(
+                                                        "w-10 h-10 rounded-xl flex items-center justify-center transition-colors",
+                                                        selectedBankId === bank._id ? "bg-primary text-white" : "bg-gray-100 text-text-muted group-hover:bg-primary/10 group-hover:text-primary"
+                                                    )}>
+                                                        <Building2 size={20} />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-xs font-semibold text-foreground">{bank.bankName}</p>
+                                                        <p className="text-[10px] font-bold text-text-muted mt-0.5 tracking-wider">•••• {bank.accountNumber.slice(-4)}</p>
+                                                    </div>
+                                                </div>
+                                                <div className={cn(
+                                                    "w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all",
+                                                    selectedBankId === bank._id ? "bg-primary border-primary text-white" : "border-gray-200"
+                                                )}>
+                                                    {selectedBankId === bank._id && <CheckCircle2 size={14} />}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="p-8 pt-0">
+                            <button
+                                disabled={submitting || revenueStats.availableBalance < 500 || Number(payoutAmount) > revenueStats.availableBalance}
+                                className="w-full py-2.5 bg-primary text-white rounded-xl font-semibold text-sm hover:bg-primary/90 transition-all shadow-sm flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {submitting ? "Processing Request..." : (revenueStats.availableBalance < 500 ? "Insufficient Balance" : "Submit Payout Request")}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            )}
+            {/* Detailed Breakdown Modal */}
+            {showBreakdownModal && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[110] flex items-center justify-center p-4 overflow-hidden">
+                    <div className="bg-white rounded-xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-md animate-in zoom-in-95 duration-300 flex flex-col">
+                        <div className="p-8 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white z-10">
+                            <div>
+                                <h2 className="text-2xl font-semibold">{breakdownTitle}</h2>
+                                <p className="text-xs font-bold text-text-muted uppercase tracking-widest mt-1">Full transaction history for your revenue</p>
+                            </div>
+                            <button onClick={() => setShowBreakdownModal(false)} className="w-10 h-10 flex items-center justify-center hover:bg-gray-100 rounded-full transition-colors group">
+                                <X size={24} className="text-text-muted group-hover:text-primary" />
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-4 md:p-8">
+                            <table className="w-full text-left">
+                                <thead className="sticky top-0 bg-white z-10">
+                                    <tr className="bg-background-soft">
+                                        <th className="px-6 py-4 text-xs font-medium text-text-muted rounded-l-2xl">Order ID</th>
+                                        <th className="px-6 py-4 text-xs font-medium text-text-muted">Date</th>
+                                        <th className="px-6 py-4 text-xs font-medium text-text-muted text-right">Gross</th>
+                                        <th className="px-6 py-4 text-xs font-semibold text-text-muted uppercase tracking-wide text-right">Commission</th>
+                                        <th className="px-6 py-4 text-xs font-semibold text-text-muted uppercase tracking-wide text-right">Net Credit</th>
+                                        <th className="px-6 py-4 text-xs font-medium text-text-muted text-center rounded-r-2xl">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {(revenueStats as any).earningsBreakdown?.map((item: any) => (
+                                        <tr key={item.orderId} className="hover:bg-gray-50 transition-colors group">
+                                            <td className="px-6 py-5 text-sm font-bold text-primary">#{item.orderNumber.split('-').slice(-1)}</td>
+                                            <td className="px-6 py-5 text-sm text-text-muted font-medium">{new Date(item.date).toLocaleDateString()}</td>
+                                            <td className="px-5 py-4 text-sm font-semibold text-right">₹{item.gross}</td>
+                                            <td className="px-5 py-4 text-sm font-semibold text-right text-amber-600">- ₹{item.commission} ({item.commissionRate}%)</td>
+                                            <td className="px-5 py-4 text-sm font-semibold text-right text-blue-600">₹{item.net}</td>
+                                            <td className="px-6 py-5 text-center">
+                                                <span className={cn(
+                                                    "px-3 py-1 rounded-full text-xs font-semibold",
+                                                    item.status === 'Cleared' ? "bg-blue-50 text-blue-600" : "bg-amber-50 text-amber-600"
+                                                )}>
+                                                    {item.status}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {(!(revenueStats as any).earningsBreakdown || (revenueStats as any).earningsBreakdown.length === 0) && (
+                                        <tr>
+                                            <td colSpan={6} className="px-6 py-20 text-center text-text-muted font-bold">
+                                                No breakdown history available yet.
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div className="p-8 border-t border-gray-100 bg-gray-50 flex justify-between items-center">
+                            <p className="text-xs font-bold text-text-muted uppercase tracking-widest">
+                                Total Orders Processed: <span className="text-primary">{(revenueStats as any).earningsBreakdown?.length || 0}</span>
+                            </p>
+                            <button onClick={() => setShowBreakdownModal(false)} className="px-8 py-3 bg-primary text-white rounded-xl font-semibold text-xs hover:opacity-90 transition-all">
+                                Close View
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    )
+}

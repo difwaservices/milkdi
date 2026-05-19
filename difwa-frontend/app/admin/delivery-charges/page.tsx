@@ -1,0 +1,351 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import { Truck, Save, Plus, Trash2, Info, History, AlertCircle, Users } from "lucide-react"
+import adminService from "@/data/services/adminService"
+import { toast } from "sonner"
+
+type Slab = { minKm: number; maxKm: number; charge: number }
+type Setting = {
+    slabs: Slab[]
+    maxDeliveryKm: number
+    history: any[]
+    updatedAt: string
+    retailerSlabOptions: Slab[]
+}
+
+export default function DeliveryChargesPage() {
+    const [setting, setSetting] = useState<Setting | null>(null)
+    const [loading, setLoading] = useState(true)
+    const [saving, setSaving] = useState(false)
+    const [savingOptions, setSavingOptions] = useState(false)
+    const [slabs, setSlabs] = useState<Slab[]>([])
+    const [retailerSlabOptions, setRetailerSlabOptions] = useState<Slab[]>([])
+    const [maxKm, setMaxKm] = useState(30)
+    const [note, setNote] = useState("")
+
+    useEffect(() => { fetchSettings() }, [])
+
+    const fetchSettings = async () => {
+        try {
+            setLoading(true)
+            const res = await adminService.getDeliveryChargeSettings()
+            if (res.success) {
+                setSetting(res.data)
+                setSlabs(res.data.slabs.map((s: Slab) => ({ ...s })))
+                setMaxKm(res.data.maxDeliveryKm)
+                setRetailerSlabOptions((res.data.retailerSlabOptions || []).map((s: Slab) => ({ ...s })))
+            }
+        } catch (e: any) {
+            toast.error("Failed to load settings")
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const handleSlabChange = (index: number, field: keyof Slab, value: string) => {
+        setSlabs(prev => prev.map((s, i) => i === index ? { ...s, [field]: parseFloat(value) || 0 } : s))
+    }
+
+    const addSlab = () => {
+        const last = slabs[slabs.length - 1]
+        setSlabs(prev => [...prev, { minKm: last?.maxKm || 0, maxKm: (last?.maxKm || 0) + 5, charge: 0 }])
+    }
+
+    const removeSlab = (index: number) => {
+        if (slabs.length <= 1) { toast.error("At least one slab is required"); return }
+        setSlabs(prev => prev.filter((_, i) => i !== index))
+    }
+
+    const handleSave = async () => {
+        for (let i = 0; i < slabs.length; i++) {
+            const s = slabs[i]
+            if (s.minKm >= s.maxKm) { toast.error(`Slab ${i + 1}: Min km must be less than Max km`); return }
+            if (s.charge < 0) { toast.error(`Slab ${i + 1}: Charge cannot be negative`); return }
+        }
+        setSaving(true)
+        try {
+            const res = await adminService.updateDeliveryChargeSettings(slabs, maxKm, note, retailerSlabOptions)
+            if (res.success) {
+                toast.success("Delivery charge settings saved!")
+                setSetting(res.data)
+                setNote("")
+            }
+        } catch (e: any) {
+            toast.error(e.response?.data?.message || "Failed to save")
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    // Retailer slab options handlers
+    const handleOptionChange = (index: number, field: keyof Slab, value: string) => {
+        setRetailerSlabOptions(prev => prev.map((s, i) => i === index ? { ...s, [field]: parseFloat(value) || 0 } : s))
+    }
+
+    const addOption = () => {
+        const last = retailerSlabOptions[retailerSlabOptions.length - 1]
+        setRetailerSlabOptions(prev => [...prev, { minKm: last?.maxKm || 0, maxKm: (last?.maxKm || 0) + 3, charge: 0 }])
+    }
+
+    const removeOption = (index: number) => {
+        setRetailerSlabOptions(prev => prev.filter((_, i) => i !== index))
+    }
+
+    const handleSaveOptions = async () => {
+        for (let i = 0; i < retailerSlabOptions.length; i++) {
+            const s = retailerSlabOptions[i]
+            if (s.minKm >= s.maxKm) { toast.error(`Option ${i + 1}: Min km must be less than Max km`); return }
+            if (s.charge < 0) { toast.error(`Option ${i + 1}: Charge cannot be negative`); return }
+        }
+        setSavingOptions(true)
+        try {
+            const res = await adminService.updateRetailerSlabOptions(retailerSlabOptions)
+            if (res.success) {
+                toast.success("Retailer slab options saved!")
+            }
+        } catch (e: any) {
+            toast.error(e.response?.data?.message || "Failed to save options")
+        } finally {
+            setSavingOptions(false)
+        }
+    }
+
+    if (loading) return (
+        <div className="flex items-center justify-center min-h-[400px]">
+            <div className="w-10 h-10 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
+        </div>
+    )
+
+    return (
+        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {/* Header */}
+            <div>
+                <h1 className="text-2xl font-bold tracking-tight">Delivery Charges</h1>
+                <p className="text-text-muted mt-1">Set distance-based delivery slabs and retailer options.</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                {/* Main Settings */}
+                <div className="md:col-span-2 space-y-6">
+                    <div className="bg-white rounded-xl border border-border-custom shadow-xl p-8 space-y-6">
+                        <div className="flex items-center gap-3 pb-4 border-b border-border-custom/50">
+                            <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
+                                <Truck size={24} />
+                            </div>
+                            <div>
+                                <h3 className="font-semibold text-foreground text-base">Platform Distance Slabs</h3>
+                                <p className="text-xs font-bold text-text-muted uppercase tracking-widest">Default slabs used when retailers don't have custom pricing</p>
+                            </div>
+                        </div>
+
+                        {/* Slabs */}
+                        <div className="space-y-3">
+                            {slabs.map((slab, index) => (
+                                <div key={index} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-3 items-center p-4 rounded-2xl bg-background-soft border border-border-custom/50">
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-text-muted">From (km)</label>
+                                        <input
+                                            type="number" min="0" step="0.5" value={slab.minKm}
+                                            onChange={e => handleSlabChange(index, "minKm", e.target.value)}
+                                            className="w-full px-3 py-2 rounded-xl bg-white border border-border-custom outline-none text-sm font-bold focus:border-primary transition-colors"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-text-muted">To (km)</label>
+                                        <input
+                                            type="number" min="0" step="0.5" value={slab.maxKm}
+                                            onChange={e => handleSlabChange(index, "maxKm", e.target.value)}
+                                            className="w-full px-3 py-2 rounded-xl bg-white border border-border-custom outline-none text-sm font-bold focus:border-primary transition-colors"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-text-muted">Charge (₹)</label>
+                                        <input
+                                            type="number" min="0" step="1" value={slab.charge}
+                                            onChange={e => handleSlabChange(index, "charge", e.target.value)}
+                                            className="w-full px-3 py-2 rounded-xl bg-white border border-border-custom outline-none text-sm font-bold focus:border-primary transition-colors"
+                                        />
+                                    </div>
+                                    <button onClick={() => removeSlab(index)} className="mt-5 p-2 rounded-xl text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors">
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+
+                        <button onClick={addSlab} className="w-full py-3 border-2 border-dashed border-primary/30 rounded-2xl text-primary font-bold text-sm hover:border-primary hover:bg-primary/5 transition-all flex items-center justify-center gap-2">
+                            <Plus size={16} /> Add Slab
+                        </button>
+
+                        {/* Max Delivery Distance */}
+                        <div className="space-y-2 pt-4 border-t border-border-custom/50">
+                            <label className="text-xs font-medium text-text-muted">Maximum Delivery Distance (km)</label>
+                            <input
+                                type="number" min="1" step="1" value={maxKm}
+                                onChange={e => setMaxKm(parseInt(e.target.value) || 30)}
+                                className="w-full px-4 py-2.5 rounded-xl bg-background-soft border border-transparent focus:border-primary/20 outline-none font-bold text-xl text-primary transition-all"
+                            />
+                            <p className="text-[10px] text-text-muted font-bold uppercase tracking-widest">Orders beyond this distance will be rejected as &quot;Not Deliverable&quot;.</p>
+                        </div>
+
+                        {/* Note */}
+                        <div className="space-y-2">
+                            <label className="text-xs font-medium text-text-muted">Reason for change (Internal Note)</label>
+                            <textarea
+                                value={note}
+                                onChange={e => setNote(e.target.value)}
+                                className="w-full px-4 py-2.5 rounded-xl bg-background-soft border border-transparent focus:border-primary/20 outline-none font-bold text-primary min-h-[80px] transition-all"
+                                placeholder="Why are you updating the slabs?"
+                            />
+                        </div>
+
+                        <button onClick={handleSave} disabled={saving} className="w-full py-2.5 bg-primary text-white rounded-xl font-semibold text-sm hover:bg-primary/90 transition-all shadow-sm flex items-center justify-center gap-3 disabled:opacity-50">
+                            <Save size={18} />
+                            {saving ? "Saving..." : "Save Platform Delivery Rules"}
+                        </button>
+                    </div>
+
+                    {/* ── Retailer Slab Options Section ──────────────────────────── */}
+                    <div className="bg-white rounded-xl border border-border-custom shadow-xl p-8 space-y-6">
+                        <div className="flex items-center gap-3 pb-4 border-b border-border-custom/50">
+                            <div className="w-12 h-12 rounded-2xl bg-orange-50 flex items-center justify-center text-orange-500">
+                                <Users size={24} />
+                            </div>
+                            <div>
+                                <h3 className="font-semibold text-orange-500 text-base">Retailer Slab Options</h3>
+                                <p className="text-xs font-bold text-text-muted uppercase tracking-widest">Preset options retailers can pick from when setting their custom delivery charges</p>
+                            </div>
+                        </div>
+
+                        {retailerSlabOptions.length === 0 && (
+                            <div className="text-center py-6 text-text-muted text-sm font-bold">
+                                No options defined yet. Add options below for retailers to choose from.
+                            </div>
+                        )}
+
+                        <div className="space-y-3">
+                            {retailerSlabOptions.map((opt, index) => (
+                                <div key={index} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-3 items-center p-4 rounded-2xl bg-orange-50/50 border border-orange-100">
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-text-muted">From (km)</label>
+                                        <input
+                                            type="number" min="0" step="0.5" value={opt.minKm}
+                                            onChange={e => handleOptionChange(index, "minKm", e.target.value)}
+                                            className="w-full px-3 py-2 rounded-xl bg-white border border-orange-100 outline-none text-sm font-bold focus:border-orange-400 transition-colors"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-text-muted">To (km)</label>
+                                        <input
+                                            type="number" min="0" step="0.5" value={opt.maxKm}
+                                            onChange={e => handleOptionChange(index, "maxKm", e.target.value)}
+                                            className="w-full px-3 py-2 rounded-xl bg-white border border-orange-100 outline-none text-sm font-bold focus:border-orange-400 transition-colors"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-text-muted">Suggested ₹</label>
+                                        <input
+                                            type="number" min="0" step="1" value={opt.charge}
+                                            onChange={e => handleOptionChange(index, "charge", e.target.value)}
+                                            className="w-full px-3 py-2 rounded-xl bg-white border border-orange-100 outline-none text-sm font-bold focus:border-orange-400 transition-colors"
+                                        />
+                                    </div>
+                                    <button onClick={() => removeOption(index)} className="mt-5 p-2 rounded-xl text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors">
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+
+                        <button onClick={addOption} className="w-full py-3 border-2 border-dashed border-orange-300 rounded-2xl text-orange-500 font-bold text-sm hover:border-orange-400 hover:bg-orange-50 transition-all flex items-center justify-center gap-2">
+                            <Plus size={16} /> Add Retailer Option
+                        </button>
+
+                        <button onClick={handleSaveOptions} disabled={savingOptions} className="w-full py-2.5 bg-orange-500 text-white rounded-xl font-semibold text-sm hover:bg-orange-600 transition-all shadow-lg shadow-orange-200 flex items-center justify-center gap-3 disabled:opacity-50">
+                            <Save size={18} />
+                            {savingOptions ? "Saving..." : "Save Retailer Options"}
+                        </button>
+                    </div>
+
+                    {/* Info */}
+                    <div className="bg-blue-50/50 rounded-xl p-6 border border-blue-100 flex gap-4">
+                        <Info size={24} className="text-blue-500 shrink-0 mt-0.5" />
+                        <div className="space-y-2">
+                            <h4 className="font-semibold text-blue-900 text-sm">How Delivery Charges Work</h4>
+                            <ul className="text-xs font-bold text-blue-800/70 space-y-2 list-disc ml-4 leading-relaxed">
+                                <li>The app calculates road distance using Google Maps before checkout.</li>
+                                <li>If a retailer has <strong>custom pricing enabled</strong>, their own slabs are used and <strong>they receive the delivery income</strong>.</li>
+                                <li>If no custom pricing, platform slabs above are used and <strong>Milkdi receives the income</strong>.</li>
+                                <li>Retailer slab options above are the preset choices shown to retailers when they configure their own charges.</li>
+                                <li>If distance exceeds Max Distance, the order is rejected as &quot;Not Deliverable&quot;.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Sidebar - Preview + History */}
+                <div className="space-y-6">
+                    {/* Live Preview */}
+                    <div className="bg-white rounded-xl border border-border-custom shadow-xl p-6 space-y-4">
+                        <h3 className="font-semibold">Platform Preview</h3>
+                        <div className="space-y-2">
+                            {slabs.map((s, i) => (
+                                <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-background-soft">
+                                    <span className="text-xs font-bold text-text-muted">{s.minKm} – {s.maxKm} km</span>
+                                    <span className={`text-xs font-semibold px-2 py-1 rounded-lg ${s.charge === 0 ? 'bg-green-100 text-green-700' : 'bg-primary/10 text-primary'}`}>
+                                        {s.charge === 0 ? "FREE" : `₹${s.charge}`}
+                                    </span>
+                                </div>
+                            ))}
+                            <div className="flex items-center justify-between p-3 rounded-xl bg-red-50">
+                                <span className="text-xs font-bold text-red-500">&gt; {maxKm} km</span>
+                                <span className="text-xs font-semibold px-2 py-1 rounded-lg bg-red-100 text-red-600">Not Deliverable</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Retailer Options Preview */}
+                    {retailerSlabOptions.length > 0 && (
+                        <div className="bg-white rounded-xl border border-orange-100 shadow-xl p-6 space-y-4">
+                            <h3 className="font-semibold text-orange-500 text-sm">Retailer Options Preview</h3>
+                            <div className="space-y-2">
+                                {retailerSlabOptions.map((s, i) => (
+                                    <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-orange-50">
+                                        <span className="text-xs font-bold text-text-muted">{s.minKm} – {s.maxKm} km</span>
+                                        <span className={`text-xs font-semibold px-2 py-1 rounded-lg ${s.charge === 0 ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-600'}`}>
+                                            {s.charge === 0 ? "FREE" : `₹${s.charge}`}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* History */}
+                    <div className="bg-white rounded-xl border border-border-custom shadow-xl p-6 space-y-4">
+                        <div className="flex items-center gap-2">
+                            <History size={18} className="text-primary" />
+                            <h3 className="font-semibold">Change History</h3>
+                        </div>
+                        <div className="space-y-3 max-h-[400px] overflow-y-auto scrollbar-thin pr-1">
+                            {setting?.history && setting.history.length > 0 ? (
+                                [...setting.history].reverse().map((h: any, i: number) => (
+                                    <div key={i} className="p-3 rounded-2xl bg-background-soft border border-border-custom/50 space-y-1">
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-1 rounded-lg">{h.slabs?.length} slabs</span>
+                                            <span className="text-[10px] font-bold text-text-muted">{new Date(h.changedAt).toLocaleDateString()}</span>
+                                        </div>
+                                        {h.note && <p className="text-xs font-bold text-primary/80 italic">&quot;{h.note}&quot;</p>}
+                                    </div>
+                                ))
+                            ) : (
+                                <p className="text-xs font-bold text-text-muted text-center py-6">No history yet.</p>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    )
+}

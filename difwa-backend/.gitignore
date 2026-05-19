@@ -1,0 +1,9 @@
+node_modules/
+.env
+.env.local
+.env.production
+dist/
+build/
+uploads/
+socket-server/
+difwa-water-firebase-adminsdk-fbsvc-f73db218a2.json

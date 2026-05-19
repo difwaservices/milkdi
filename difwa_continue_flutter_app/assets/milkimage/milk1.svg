@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <defs>
+    <radialGradient id="bgGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#f0fdf4;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#dcfce7;stop-opacity:1" />
+    </radialGradient>
+    <radialGradient id="glassGrad" cx="30%" cy="30%" r="70%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:0.95" />
+      <stop offset="100%" style="stop-color:#f0fdf4;stop-opacity:0.85" />
+    </radialGradient>
+  </defs>
+
+  <!-- Background circle -->
+  <circle cx="200" cy="200" r="190" fill="url(#bgGrad)" opacity="0.6"/>
+
+  <!-- Milk splash drops around -->
+  <ellipse cx="80" cy="130" rx="18" ry="12" fill="#15803D" opacity="0.15" transform="rotate(-20 80 130)"/>
+  <ellipse cx="320" cy="110" rx="14" ry="9" fill="#15803D" opacity="0.12" transform="rotate(15 320 110)"/>
+  <circle cx="340" cy="240" r="10" fill="#86efac" opacity="0.4"/>
+  <circle cx="55" cy="260" r="8" fill="#86efac" opacity="0.35"/>
+  <circle cx="310" cy="320" r="6" fill="#15803D" opacity="0.2"/>
+
+  <!-- Milk glass body -->
+  <path d="M140 130 L115 330 Q115 350 140 350 L260 350 Q285 350 285 330 L260 130 Z"
+        fill="url(#glassGrad)" stroke="#bbf7d0" stroke-width="3"/>
+
+  <!-- Milk fill inside glass -->
+  <path d="M148 200 L128 330 Q128 344 148 344 L252 344 Q272 344 272 330 L252 200 Z"
+        fill="white" opacity="0.95"/>
+
+  <!-- Green tint milk fill -->
+  <path d="M148 200 L128 330 Q128 344 148 344 L252 344 Q272 344 272 330 L252 200 Z"
+        fill="#f0fdf4" opacity="0.7"/>
+
+  <!-- Milk surface -->
+  <ellipse cx="200" cy="200" rx="52" ry="12" fill="white"/>
+  <path d="M155 200 Q175 190 200 200 Q225 210 245 200" stroke="#86efac" stroke-width="2" fill="none"/>
+
+  <!-- Glass rim -->
+  <ellipse cx="200" cy="130" rx="60" ry="14" fill="white" stroke="#86efac" stroke-width="2.5"/>
+
+  <!-- Glass shine -->
+  <path d="M155 165 Q158 240 152 300" stroke="rgba(255,255,255,0.7)" stroke-width="7" stroke-linecap="round"/>
+
+  <!-- Milk splash above glass -->
+  <path d="M200 116 Q188 72 175 52 Q188 78 168 62 Q192 88 180 108"
+        stroke="#15803D" stroke-width="4" stroke-linecap="round" fill="none" opacity="0.5"/>
+  <path d="M200 116 Q212 68 225 48 Q212 76 232 58 Q208 86 220 108"
+        stroke="#15803D" stroke-width="4" stroke-linecap="round" fill="none" opacity="0.5"/>
+  <circle cx="175" cy="52" r="7" fill="#15803D" opacity="0.45"/>
+  <circle cx="225" cy="48" r="6" fill="#15803D" opacity="0.45"/>
+  <circle cx="157" cy="80" r="4" fill="#86efac" opacity="0.6"/>
+  <circle cx="243" cy="74" r="4" fill="#86efac" opacity="0.6"/>
+
+  <!-- Cow silhouette badge (top right) -->
+  <g transform="translate(285 60) scale(0.7)" opacity="0.8">
+    <circle cx="60" cy="60" r="52" fill="#dcfce7" stroke="#bbf7d0" stroke-width="2"/>
+    <!-- Cow body -->
+    <ellipse cx="55" cy="68" rx="28" ry="18" fill="#15803D" opacity="0.8"/>
+    <!-- Cow head -->
+    <ellipse cx="82" cy="55" rx="16" ry="13" fill="#15803D" opacity="0.8"/>
+    <!-- Cow snout -->
+    <ellipse cx="94" cy="60" rx="8" ry="6" fill="#14532D" opacity="0.7"/>
+    <!-- Cow ear -->
+    <ellipse cx="78" cy="44" rx="5" ry="8" fill="#15803D" opacity="0.8" transform="rotate(-15 78 44)"/>
+    <!-- Legs -->
+    <rect x="34" y="82" width="7" height="16" rx="3" fill="#15803D" opacity="0.7"/>
+    <rect x="46" y="82" width="7" height="16" rx="3" fill="#15803D" opacity="0.7"/>
+    <rect x="64" y="82" width="7" height="16" rx="3" fill="#15803D" opacity="0.7"/>
+    <rect x="76" y="82" width="7" height="16" rx="3" fill="#15803D" opacity="0.7"/>
+    <!-- Spot -->
+    <ellipse cx="50" cy="62" rx="9" ry="7" fill="#bbf7d0" opacity="0.5"/>
+  </g>
+
+  <!-- Fresh label -->
+  <rect x="118" y="360" width="164" height="30" rx="15" fill="#15803D"/>
+  <text x="200" y="380" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" font-weight="bold" fill="white">🥛 100% Farm Fresh</text>
+</svg>

@@ -1,0 +1,393 @@
+import User from "../auth/user.model.js";
+import Order from "../orders/order.model.js";
+import RiderModel from "./rider.model.js";
+import bcrypt from "bcryptjs";
+import { emitOrderUpdate, emitRiderAssigned, emitOrderDelivered } from "../../shared/services/socket.service.js";
+import { createNotification } from "../../shared/services/notification.service.js";
+
+export const getRiderOrders = async (req, res) => {
+    try {
+        const orders = await Order.find({ rider: req.user.id })
+            .populate("user", "fullName phoneNumber")
+            .populate("items.product", "name")
+            .populate("items.retailer", "businessDetails")
+            .sort({ createdAt: -1 });
+        res.status(200).json({ success: true, data: orders });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+export const updateDeliveryStatus = async (req, res) => {
+    try {
+        const { orderId, status } = req.body;
+        const riderId = req.user.id;
+
+        const order = await Order.findOne({ orderId, rider: riderId }).populate("items.retailer");
+        if (!order) return res.status(404).json({ success: false, message: "Order not found or not assigned to you" });
+
+        // Guard: prevent setting the same status again
+        if (order.status === status) {
+            return res.status(400).json({ success: false, message: `Order is already in '${status}' status.` });
+        }
+
+        order.status = status;
+        if (status === "Delivered") order.deliveredAt = new Date();
+        order.items.forEach(item => { item.status = status; });
+
+        // Push to statusHistory
+        order.statusHistory = order.statusHistory || [];
+        order.statusHistory.push({
+            status,
+            changedBy: riderId,
+            role: 'rider',
+            timestamp: new Date()
+        });
+
+        await order.save();
+
+        const retailerId = order.items[0]?.retailer?._id || order.items[0]?.retailer;
+        const userId = order.user;
+        await emitOrderUpdate(orderId, status, { orderId, status, statusHistory: order.statusHistory }, retailerId, userId);
+
+        if (status === "Delivered") {
+            emitOrderDelivered(orderId, userId);
+        }
+
+        // Notify Retailer of status change
+        if (status === "Delivered") {
+            const customer = await (await import("../app-auth/app-user.model.js")).default.findById(userId);
+            const riderTemp = await User.findById(riderId);
+            createNotification(retailerId.toString(), {
+                title: `Order Delivered! 🎉`,
+                message: `Order #${orderId.slice(-6).toUpperCase()} delivered to ${customer?.fullName || "Customer"} customer by rider ${riderTemp?.name || "Rider"}.`,
+                type: "Order",
+                referenceId: orderId
+            });
+        } else {
+            createNotification(retailerId.toString(), {
+                title: `Order Update: ${status} 📦`,
+                message: `Order #${orderId.slice(-6)} is now ${status.toLowerCase()}.`,
+                type: "Order",
+                referenceId: orderId
+            });
+        }
+
+        // ─── NOTIFY CUSTOMER ──────────────────────────
+        createNotification(userId.toString(), {
+            title: `Order Update! ${status === 'Delivered' ? '🎉' : '🚚'}`,
+            message: `Your order #${orderId.slice(-6).toUpperCase()} is now '${status}'.`,
+            type: "Order",
+            referenceId: order._id.toString(),
+            onModel: "AppUser"
+        });
+
+        res.status(200).json({ success: true, data: order });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+export const updateRiderLocation = async (req, res) => {
+    try {
+        const { lat, lng } = req.body;
+        const userId = req.user.id;
+
+        await User.findByIdAndUpdate(userId, {
+            "location.coordinates": [lng, lat],
+            isOnline: true
+        });
+
+        const activeOrders = await Order.find({
+            rider: userId,
+            status: { $in: ["Accepted", "Rider Accepted", "Out for Delivery", "Processing", "Rider Assigned"] }
+        });
+
+        activeOrders.forEach(order => {
+            // Use order.orderId directly, emitOrderUpdate adds the 'order_' prefix
+            emitOrderUpdate(order.orderId, "RIDER_LOCATION_UPDATE", {
+                lat,
+                lng,
+                orderId: order.orderId
+            }); // Note: location updates are high-frequency, sometimes we don't await them for perf, but here we can
+        });
+
+        res.status(200).json({ success: true });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+export const completeDelivery = async (req, res) => {
+    try {
+        const { orderId, itemWeights } = req.body; // itemWeights: [{ productId, weight }]
+        const riderId = req.user.id;
+
+        const order = await Order.findOne({ orderId, rider: riderId }).populate("items.product");
+        if (!order) return res.status(404).json({ success: false, message: "Order not found or not assigned to you" });
+
+        let totalRefund = 0;
+        const updatedItems = order.items.map(item => {
+            const weightInfo = itemWeights?.find(w => w.productId.toString() === item.product._id.toString());
+            if (weightInfo && weightInfo.weight < item.quantity) {
+                const diff = item.quantity - weightInfo.weight;
+                const refundAmount = diff * item.price;
+                totalRefund += refundAmount;
+                item.deliveredWeight = weightInfo.weight;
+            } else {
+                item.deliveredWeight = item.quantity;
+            }
+            return item;
+        });
+
+        order.items = updatedItems.map(item => ({ ...item, status: "Delivered" }));
+        order.status = "Delivered";
+        order.deliveredAt = new Date();
+        order.paymentStatus = "Paid";
+        await order.save();
+
+        if (totalRefund > 0) {
+            await walletService.adjustBalance(
+                order.user,
+                "appUser",
+                totalRefund,
+                "Credit",
+                `Weight Variation Refund: Order #${orderId}`,
+                "Refund",
+                order._id
+            );
+        }
+
+        // Update Rider status to Online
+        await RiderModel.findOneAndUpdate({ user: riderId }, { status: "Online" });
+
+        const retailerId = order.items[0]?.retailer;
+        await emitOrderUpdate(orderId, "DELIVERED", { orderId, refund: totalRefund }, retailerId);
+        emitOrderDelivered(orderId, order.user);
+
+        // Notify Retailer of delivery
+        const customer = await (await import("../app-auth/app-user.model.js")).default.findById(order.user);
+        const riderTemp = await User.findById(riderId);
+        createNotification(retailerId.toString(), {
+            title: `Order Delivered! 🎉`,
+            message: `Order #${orderId.slice(-6).toUpperCase()} delivered to ${customer?.fullName || "Customer"} customer by rider ${riderTemp?.name || "Rider"}.`,
+            type: "Order",
+            referenceId: orderId
+        });
+
+        // ─── NOTIFY CUSTOMER ──────────────────────────
+        createNotification(order.user.toString(), {
+            title: `Order Delivered!`,
+            message: `Your order #${orderId.slice(-6).toUpperCase()} has been delivered successfully.`,
+            type: "Order",
+            referenceId: order._id.toString(),
+            onModel: "AppUser"
+        });
+
+        res.status(200).json({ success: true, message: "Order delivered successfully", refund: totalRefund });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// --- RETAILER SIDE MANAGEMENT ---
+
+export const addRider = async (req, res) => {
+    try {
+        const { name, phone, vehicleType, plateNumber } = req.body;
+        const retailerId = req.user.id;
+
+        if (!phone) return res.status(400).json({ success: false, message: "Phone number is required" });
+
+        const existingUser = await User.findOne({ phone });
+        if (existingUser) return res.status(400).json({ success: false, message: "A user with this phone number already exists" });
+
+        // Create User account (No password/email required for OTP flow)
+        // Assigning a dummy email to prevent duplicate key errors because the email_1 index is not sparse in DB
+        const user = new User({
+            name,
+            phone,
+            email: `rider_${Date.now()}_${Math.floor(Math.random() * 10000)}@milkdi.com`,
+            role: "rider",
+            status: "approved"
+        });
+        await user.save();
+
+        // Create Rider profile
+        const RiderModel = (await import("./rider.model.js")).default;
+        const rider = new RiderModel({
+            user: user._id,
+            retailer: retailerId,
+            vehicleDetails: { vehicleType, plateNumber },
+            status: "Offline"
+        });
+        await rider.save();
+
+        res.status(201).json({ success: true, message: "Rider added successfully", data: { id: rider._id, name: user.name } });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+export const getRetailerRiders = async (req, res) => {
+    try {
+        const RiderModel = (await import("./rider.model.js")).default;
+        const riders = await RiderModel.find({ retailer: req.user.id }).populate("user", "name email phone");
+        res.status(200).json({ success: true, data: riders });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+export const updateRiderStatusByRetailer = async (req, res) => {
+    try {
+        const { status } = req.body;
+        const RiderModel = (await import("./rider.model.js")).default;
+        const rider = await RiderModel.findOneAndUpdate(
+            { _id: req.params.id, retailer: req.user.id },
+            { status },
+            { new: true }
+        );
+        if (!rider) return res.status(404).json({ success: false, message: "Rider not found" });
+        res.status(200).json({ success: true, data: rider });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+export const respondToOrderAssignment = async (req, res) => {
+    try {
+        const { orderId, response } = req.body; // response: "Accepted" or "Rejected"
+        const riderId = req.user.id;
+
+        const order = await Order.findOne({ orderId })
+            .populate("items.retailer")
+            .populate("user", "fullName phoneNumber _id")
+            .populate("items.product", "name");
+
+        if (!order) return res.status(404).json({ success: false, message: "Order not found" });
+
+        order.riderAssignmentStatus = response;
+        if (response === "Accepted") {
+            order.status = "Rider Accepted";
+            order.rider = riderId;
+
+            // Track status history
+            order.statusHistory = order.statusHistory || [];
+            order.statusHistory.push({
+                status: "Rider Accepted",
+                changedBy: riderId,
+                role: 'rider',
+                timestamp: new Date()
+            });
+        }
+
+        await order.save();
+
+        const retailerId = order.items[0]?.retailer?._id || order.items[0]?.retailer;
+        const userId = order.user?._id || order.user;
+
+        // Emit general order update to retailer, user, and rider rooms
+        await emitOrderUpdate(orderId, response, { orderId, response, order }, retailerId, userId, riderId);
+
+        // Notify Retailer when rider accepts
+        if (response === "Accepted") {
+            const riderUser = await User.findById(riderId, "name phone");
+            createNotification(retailerId.toString(), {
+                title: "Rider Assigned! 🏍️",
+                message: `Rider ${riderUser?.name || "A rider"} has accepted order #${orderId.slice(-6)}.`,
+                type: "Rider",
+                referenceId: orderId
+            });
+
+            // Emit special riderAssigned popup event to user with rider details
+            await emitRiderAssigned(orderId, userId, {
+                name: riderUser?.name || "Your Rider",
+                phone: riderUser?.phone || "",
+                riderId
+            });
+        }
+
+        res.status(200).json({ success: true, message: `Order ${response.toLowerCase()} successfully`, data: order });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+export const updateRider = async (req, res) => {
+    try {
+        const { name, phone, vehicleType, plateNumber } = req.body;
+        const riderId = req.params.id;
+        const retailerId = req.user.id;
+
+        const rider = await RiderModel.findOne({ _id: riderId, retailer: retailerId });
+        if (!rider) return res.status(404).json({ success: false, message: "Rider not found or unauthorized" });
+
+        // Update User info
+        await User.findByIdAndUpdate(rider.user, { name, phone });
+
+        // Update Rider vehicle details
+        rider.vehicleDetails = { vehicleType, plateNumber };
+        await rider.save();
+
+        const updatedRider = await RiderModel.findById(riderId).populate("user", "name email phone");
+
+        res.status(200).json({ success: true, message: "Rider updated successfully", data: updatedRider });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+export const deleteRider = async (req, res) => {
+    try {
+        const RiderModel = (await import("./rider.model.js")).default;
+        const rider = await RiderModel.findOne({ _id: req.params.id, retailer: req.user.id });
+
+        if (!rider) {
+            return res.status(404).json({ success: false, message: "Rider not found" });
+        }
+        await User.findByIdAndDelete(rider.user);
+        await RiderModel.findByIdAndDelete(req.params.id);
+
+        res.status(200).json({ success: true, message: "Rider deleted successfully" });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+export const getRiderHistory = async (req, res) => {
+    try {
+        const orders = await Order.find({ rider: req.user.id })
+            .populate("user", "fullName phoneNumber")
+            .populate("items.product", "name")
+            .sort({ createdAt: -1 });
+
+        const formattedOrders = orders.map(order => ({
+            orderId: order.orderId,
+            customerName: order.user?.fullName || "Customer",
+            phoneNumber: order.user?.phoneNumber || "N/A",
+            address: order.deliveryAddress,
+            items: order.items.map(item => ({
+                name: item.product?.name || "Product",
+                quantity: item.quantity,
+                price: item.price
+            })),
+            dateTime: new Date(order.createdAt).toLocaleString("en-IN", {
+                timeZone: "Asia/Kolkata",
+                day: "2-digit",
+                month: "2-digit",
+                year: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: true
+            }).replace(/\//g, "-"),
+            paymentMethod: order.paymentMethod,
+            totalAmount: order.totalAmount,
+            status: order.status,
+            paymentStatus: order.paymentStatus
+        }));
+
+        res.status(200).json({ success: true, data: formattedOrders });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};

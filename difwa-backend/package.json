@@ -1,0 +1,42 @@
+{
+  "name": "milkdi-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "dev": "nodemon server.js",
+    "ngrok": "ngrok authtoken 3DoQPFQ2LL7jxW3S9LnbbByQ0qZ_3885zjfYLi7qaUycrMhrk && ngrok http 5001",
+    "dev:expose": "concurrently \"npm run dev\" \"npm run ngrok\"",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "echo Backend build complete",
+    "start": "node server.js",
+    "seed:milk": "node seed/seed_milk.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.750.0",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "firebase-admin": "^13.7.0",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.2.2",
+    "multer": "^2.1.0",
+    "node-cron": "^4.2.1",
+    "nodemailer": "^8.0.3",
+    "otp-generator": "^4.0.1",
+    "razorpay": "^2.9.6",
+    "sharp": "^0.34.2",
+    "socket.io": "^4.8.3"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0",
+    "firebase-tools": "^15.9.0",
+    "ngrok": "^5.0.0-beta.2",
+    "nodemon": "^3.1.14"
+  }
+}

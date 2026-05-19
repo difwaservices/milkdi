@@ -1,0 +1,7 @@
+Analyzing 2 items...                                            
+
+warning - Unused import: 'package:flutter/foundation.dart' - lib\main.dart:2:8 - unused_import
+warning - Unused import: 'app/data/services/location_tracking_service.dart' - lib\main.dart:11:8 - unused_import
+warning - Unused import: 'app/data/services/notification_service.dart' - lib\main.dart:12:8 - unused_import
+warning - Unused import: 'app/data/services/fcm_service.dart' - lib\main.dart:13:8 - unused_import
+
